@@ -10,30 +10,30 @@ module.exports = function(req, res, next) {
   }
 
   try {
-    // Log the token for debugging
     console.log('Verifying token:', token.substring(0, 20) + '...');
     
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
+    // Check if decoded has the expected structure
+    if (!decoded.user || !decoded.user.id) {
+      console.error('Invalid token format:', decoded);
+      return res.status(401).json({ error: 'Invalid token format' });
+    }
+    
     // Add user from payload to request
     req.user = decoded.user;
-    console.log('Token verified successfully for user:', req.user.id);
+    console.log('Token verified for user:', req.user.id);
     next();
   } catch (err) {
-    console.error('Token verification failed:', err.message);
+    console.error('Token verification failed:', err);
     
-    // Provide more specific error message based on the type of error
-    let errorMessage = 'Token is not valid';
-    if (err.name === 'JsonWebTokenError' && err.message === 'invalid signature') {
-      errorMessage = 'Token was signed with a different JWT_SECRET than currently set in .env';
-      console.error('JWT_SECRET MISMATCH: Your .env JWT_SECRET does not match what was used to generate this token');
-    } else if (err.name === 'TokenExpiredError') {
-      errorMessage = 'Token has expired';
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token has expired' });
     }
     
     res.status(401).json({ 
-      error: errorMessage,
+      error: 'Token is not valid',
       details: err.message
     });
   }

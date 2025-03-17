@@ -25,37 +25,60 @@ const generateToken = (user) => {
 // @desc    Register a user
 // @access  Public
 exports.register = async (req, res) => {
+    console.log('Registration attempt with data:', {
+        username: req.body.username,
+        email: req.body.email,
+        passwordProvided: !!req.body.password
+    });
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        console.log('Validation errors:', errors.array());
+        return res.status(400).json({ error: errors.array()[0].msg });
     }
 
     const { username, email, password } = req.body;
 
     try {
-        // Check if user exists
-        let user = await User.findOne({ $or: [{ email }, { username }] });
+        // Check if user exists by email
+        let emailUser = await User.findOne({ email });
+        if (emailUser) {
+            return res.status(400).json({ error: 'Email is already registered' });
+        }
 
-        if (user) {
-            return res.status(400).json({ error: 'User already exists' });
+        // Check if username exists
+        let usernameUser = await User.findOne({ username });
+        if (usernameUser) {
+            return res.status(400).json({ error: 'Username is already taken' });
         }
 
         // Create new user
-        user = new User({
+        const user = new User({
             username,
             email,
             password
         });
 
         await user.save();
+        console.log('New user created:', user._id);
 
         // Generate token
         const token = generateToken(user);
 
-        res.json({ token });
+        // Return user info along with token (using _id to match MongoDB)
+        res.json({ 
+            token,
+            user: {
+                _id: user._id,
+                id: user._id, // Include both for compatibility
+                username: user.username,
+                email: user.email,
+                role: user.role || 'user'
+            }
+        });
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server error');
+        console.error('Registration error:', err);
+        res.status(500).json({ error: 'Server error during registration' });
     }
 };
 
@@ -65,7 +88,7 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        return res.status(400).json({ error: errors.array()[0].msg });
     }
 
     const { email, password } = req.body;
@@ -76,6 +99,13 @@ exports.login = async (req, res) => {
 
         if (!user) {
             return res.status(400).json({ error: 'Invalid credentials' });
+        }
+
+        // For Google accounts without password
+        if (user.googleId && !user.password) {
+            return res.status(400).json({ 
+                error: 'This account was created with Google. Please use Google login.' 
+            });
         }
 
         // Check if password matches
@@ -99,8 +129,8 @@ exports.login = async (req, res) => {
             }
         });
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server error');
+        console.error('Login error:', err.message);
+        res.status(500).json({ error: 'Server error during login' });
     }
 };
 
